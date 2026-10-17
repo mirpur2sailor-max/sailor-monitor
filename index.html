@@ -164,10 +164,18 @@ details summary{cursor:pointer;font-weight:600;min-height:40px;display:flex;alig
     </section>
     <section class="card" aria-labelledby="fh">
       <h2 class="sec-title" id="fh">Choose the section to scan</h2>
+      <div class="f" style="font-weight:600;font-size:.88rem">
+        <span id="modeLabel">How is this section displayed?</span>
+        <div class="chips" id="fMode" role="group" aria-labelledby="modeLabel" style="margin-top:6px">
+          <button type="button" class="chip" data-mode="size" aria-pressed="true">Size-wise (every size)</button>
+          <button type="button" class="chip" data-mode="style" aria-pressed="false">Style &amp; Colour (any one size)</button>
+        </div>
+        <div class="muted small" id="modeHelp" style="font-weight:400;margin-top:6px"></div>
+      </div>
       <label class="f">Gender<select id="fG"></select></label>
       <label class="f">Master Category<select id="fM"></select></label>
       <label class="f">Category<select id="fC"></select></label>
-      <div class="f" style="font-weight:600;font-size:.88rem">
+      <div class="f" id="szWrap" style="font-weight:600;font-size:.88rem">
         <span id="szLabel">Size (select one or more)</span>
         <div class="chips" id="fS" role="group" aria-labelledby="szLabel" style="margin-top:6px"></div>
       </div>
@@ -373,9 +381,21 @@ function loadData(){
 }
 
 /* ---------- filters ---------- */
-const F={g:"",m:"",c:"",sizes:new Set()};
+const F={g:"",m:"",c:"",sizes:new Set(),mode:LS.get("sdm.mode")==="style"?"style":"size"};
 const uniq=(rows,k)=>[...new Set(rows.map(r=>r[k]))];
-function matches(r,f){return (!f.g||r.g===f.g)&&(!f.m||r.m===f.m)&&(!f.c||r.c===f.c)&&(!f.sizes.size||f.sizes.has(r.s))}
+/* In Style & Colour mode the size filter is ignored: one scan of ANY size counts for the whole style-colour. */
+function matches(r,f){return (!f.g||r.g===f.g)&&(!f.m||r.m===f.m)&&(!f.c||r.c===f.c)&&(f.mode==="style"||!f.sizes.size||f.sizes.has(r.s))}
+const scKey=r=>r.st+"|"+r.co;
+const MODE_HELP={
+  size:"Every size must be on display. The refill list shows each missing size.",
+  style:"Use this for categories displayed by style and colour. One piece of any size counts. The refill list shows only style-colours with nothing on display."
+};
+function renderMode(){
+  document.querySelectorAll("#fMode .chip").forEach(b=>b.setAttribute("aria-pressed",b.dataset.mode===F.mode));
+  $("modeHelp").textContent=MODE_HELP[F.mode];
+  $("szWrap").hidden=F.mode==="style";
+}
+$("fMode").onclick=e=>{const b=e.target.closest(".chip");if(!b)return;F.mode=b.dataset.mode;LS.set("sdm.mode",F.mode);renderFilters()};
 function fillSel(sel,vals,cur,allLabel){
   sel.innerHTML="";
   const o=document.createElement("option");o.value="";o.textContent=allLabel;sel.appendChild(o);
@@ -383,6 +403,7 @@ function fillSel(sel,vals,cur,allLabel){
   sel.value=vals.includes(cur)?cur:"";
 }
 function renderFilters(){
+  renderMode();
   const R=DB.rows;
   fillSel($("fG"),uniq(R,"g").sort(cmpStr),F.g,"All Gender"); F.g=$("fG").value;
   const R1=R.filter(r=>!F.g||r.g===F.g);
@@ -403,16 +424,19 @@ function renderFilters(){
   const styles=new Set(sel.map(r=>r.st+"|"+r.co));
   const pcs=sel.reduce((a,r)=>a+r.n,0);
   if(!R.length){const central=!$("syncCard").hidden;$("fPreview").textContent=central?"No stock report loaded yet. Use the Stock report box above.":"No stock report loaded yet. Open the instructions below and choose your stock report file.";if(!central&&$("updHelp").hidden)$("helpBtn").click();renderBar();return}
-  $("fPreview").innerHTML="This section has <b>"+sel.length.toLocaleString("en-US")+"</b> SKU ("+styles.size.toLocaleString("en-US")+" style-colours), system stock <b>"+pcs.toLocaleString("en-US")+"</b> pcs";
+  $("fPreview").innerHTML=F.mode==="style"
+    ?"This section has <b>"+styles.size.toLocaleString("en-US")+"</b> style-colours to check ("+sel.length.toLocaleString("en-US")+" SKU), system stock <b>"+pcs.toLocaleString("en-US")+"</b> pcs"
+    :"This section has <b>"+sel.length.toLocaleString("en-US")+"</b> SKU ("+styles.size.toLocaleString("en-US")+" style-colours), system stock <b>"+pcs.toLocaleString("en-US")+"</b> pcs";
   renderBar();
 }
 $("fG").onchange=e=>{F.g=e.target.value;F.m="";F.c="";F.sizes.clear();renderFilters()};
 $("fM").onchange=e=>{F.m=e.target.value;F.c="";F.sizes.clear();renderFilters()};
 $("fC").onchange=e=>{F.c=e.target.value;F.sizes.clear();renderFilters()};
 
-function keyOf(f){return [f.g,f.m,f.c,[...f.sizes].sort(cmpSize).join(",")].join("|")}
+function keyOf(f){return (f.mode==="style"?"S:":"")+[f.g,f.m,f.c,f.mode==="style"?"":[...f.sizes].sort(cmpSize).join(",")].join("|")}
 function labelOf(f){
   const p=[f.g||"All Gender",f.m||"All Master",f.c||"All Category"];
+  if(f.mode==="style")return p.join(" › ")+" · Style & Colour";
   return p.join(" › ")+(f.sizes.size?" · Size "+[...f.sizes].sort(cmpSize).join(", "):" · All Sizes");
 }
 
@@ -435,7 +459,7 @@ function renderRecent(){
     b.innerHTML='<span class="l"><span class="t"></span><span class="muted small" style="display:block"></span></span><span class="badge '+cls+'">'+txt+'</span>';
     b.querySelector(".t").textContent=s.label;
     b.querySelector(".muted").textContent="Last scan "+ago(s.last.t)+" · "+s.last.missing.length+" needed refill";
-    b.onclick=()=>{F.g=s.f.g;F.m=s.f.m;F.c=s.f.c;F.sizes=new Set(s.f.sizes);renderFilters();startScan();window.scrollTo(0,0)};
+    b.onclick=()=>{F.g=s.f.g;F.m=s.f.m;F.c=s.f.c;F.sizes=new Set(s.f.sizes);F.mode=s.f.mode==="style"?"style":"size";renderFilters();startScan();window.scrollTo(0,0)};
     box.appendChild(b);
   }
 }
@@ -446,7 +470,7 @@ let SS=null,view="setup",tab="refill",camera=null,cameraOn=false;
 function startScan(){
   const exp=DB.rows.filter(r=>matches(r,F));
   if(!exp.length){toast("No items match this selection");return}
-  SS={f:{g:F.g,m:F.m,c:F.c,sizes:[...F.sizes]},key:keyOf(F),label:labelOf(F),
+  SS={mode:F.mode,f:{g:F.g,m:F.m,c:F.c,sizes:[...F.sizes],mode:F.mode},key:keyOf(F),label:labelOf(F),
       expected:exp,expSet:new Set(exp.map(r=>r.b)),scans:new Map(),outside:new Map(),log:[],done:new Set(),started:Date.now(),prev:(sections()[keyOf(F)]||{}).last||null};
   show("scan");updateScan();$("last").className="last idle";$("last").textContent="Scanned items appear here.";
   setTimeout(()=>$("bcIn").focus(),50);
@@ -475,12 +499,18 @@ function renderBar(){
 let confirmLeave=false;
 
 function updateScan(){
-  const tot=SS.expected.length;
-  let have=0;for(const r of SS.expected) if(SS.scans.has(r.b)) have++;
+  let tot,have;
+  if(SS.mode==="style"){
+    const all=new Set(),got=new Set();
+    for(const r of SS.expected){all.add(scKey(r));if(SS.scans.has(r.b))got.add(scKey(r))}
+    tot=all.size;have=got.size;
+  }else{
+    tot=SS.expected.length;have=0;for(const r of SS.expected) if(SS.scans.has(r.b)) have++;
+  }
   const pct=tot?Math.round(have*100/tot):0;
   $("ring").style.setProperty("--p",pct);$("ringTxt").textContent=pct+"%";
   $("scanTitle").textContent=SS.label;
-  $("scanCount").textContent="Found on display "+have+" / "+tot+" SKU · Total scanned "+[...SS.scans.values(),...[...SS.outside.values()].map(o=>o.count)].reduce((a,b)=>a+b,0)+" pcs";
+  $("scanCount").textContent="Found on display "+have+" / "+tot+(SS.mode==="style"?" style-colours":" SKU")+" · Total scanned "+[...SS.scans.values(),...[...SS.outside.values()].map(o=>o.count)].reduce((a,b)=>a+b,0)+" pcs";
   const L=$("log");L.innerHTML="";
   for(const x of SS.log.slice(-30).reverse()){
     const d=document.createElement("div");d.className="logi";
@@ -506,7 +536,7 @@ function addScan(raw,fromCam){
   if(SS.expSet.has(code)){
     SS.scans.set(code,(SS.scans.get(code)||0)+1);
     SS.log.push({b:code,kind:"in",t:code+" · "+row.st+" "+row.co+" · "+row.s});
-    L.className="last ok";L.textContent="✓ "+row.st+" · "+row.co+" · Size "+row.s+(SS.scans.get(code)>1?" (this barcode: "+SS.scans.get(code)+" pcs)":"");beep(true);
+    L.className="last ok";L.textContent="✓ "+row.st+" · "+row.co+" · Size "+row.s+(SS.scans.get(code)>1?" (this barcode: "+SS.scans.get(code)+" pcs)":"")+(SS.mode==="style"?" — style-colour counted":"");beep(true);
   }else if(row){
     const o=SS.outside.get(code)||{count:0,row};o.count++;SS.outside.set(code,o);
     SS.log.push({b:code,kind:"out",t:code+" · "+row.st+" "+row.co+" · "+row.s});
@@ -568,6 +598,21 @@ $("photoIn").onchange=async e=>{
 function compute(){
   const present=[],missing=[];
   const prevScanned=new Set(SS.prev?SS.prev.scanned:[]),prevMissing=new Set(SS.prev?SS.prev.missing:[]);
+  if(SS.mode==="style"){
+    /* one entry per style-colour; b = "style|colour" key */
+    const grp=new Map();
+    for(const r of SS.expected){const k=scKey(r);(grp.get(k)||grp.set(k,{b:k,st:r.st,co:r.co,p:r.p,m:r.m,rows:[],n:0,seen:[]}).get(k)).rows.push(r)}
+    for(const g of grp.values()){
+      g.rows.sort((a,b)=>cmpSize(a.s,b.s));
+      g.n=g.rows.reduce((a,r)=>a+r.n,0);
+      g.seen=g.rows.filter(r=>SS.scans.has(r.b)).map(r=>({s:r.s,c:SS.scans.get(r.b)}));
+      if(g.seen.length) present.push(g);
+      else missing.push({...g,isNew:prevScanned.has(g.b),still:prevMissing.has(g.b)});
+    }
+    const c2=(a,b)=>cmpStr(a.st,b.st)||cmpStr(a.co,b.co);
+    present.sort(c2);missing.sort(c2);
+    return {present,missing};
+  }
   for(const r of SS.expected){
     if(SS.scans.has(r.b)) present.push(r);
     else missing.push({...r,isNew:prevScanned.has(r.b),still:prevMissing.has(r.b)});
@@ -592,7 +637,8 @@ function renderResult(){
   $("tOk").textContent=present.length;$("tMiss").textContent=missing.length;$("tOut").textContent=SS.outside.size;
   const nn=missing.filter(m=>m.isNew).length,ns=missing.filter(m=>m.still).length;
   const note=$("resNote");
-  if(SS.prev){note.hidden=false;note.textContent="Since the last scan, "+nn+" more items left the display (sold); "+ns+" items from the previous refill list are still not back on display."}
+  const unit=SS.mode==="style"?"style-colours":"items";
+  if(SS.prev){note.hidden=false;note.textContent="Since the last scan, "+nn+" more "+unit+" left the display (sold); "+ns+" "+unit+" from the previous refill list are still not back on display."}
   else note.hidden=true;
   document.querySelectorAll("#tabs .tab").forEach(t=>t.setAttribute("aria-selected",t.dataset.t===tab));
   $("refillTools").hidden=tab!=="refill";
@@ -601,7 +647,30 @@ function renderResult(){
   else if(tab==="present") renderGroups(box,present,false);
   else renderOutside(box);
 }
+function renderStyleGroups(box,list,isRefill){
+  if(!list.length){box.innerHTML='<div class="empty">'+(isRefill?"All style-colours are on display. No refill needed.":"Nothing scanned yet.")+'</div>';return}
+  const g=document.createElement("div");g.className="grp";
+  for(const r of list){
+    const it=document.createElement("label");it.className="it"+(isRefill&&SS.done.has(r.b)?" done":"");
+    let html="";
+    if(isRefill) html+='<input type="checkbox" aria-label="Refilled">';
+    html+='<span class="mid"><b class="nm"></b><span class="flag"></span><div class="muted small ln1"></div><div class="small ln2"></div></span>';
+    it.innerHTML=html;
+    it.querySelector(".nm").textContent=r.st+" · "+r.co;
+    const fl=it.querySelector(".flag");
+    if(isRefill&&r.isNew){fl.textContent="New";fl.className="flag new"}else if(isRefill&&r.still){fl.textContent="Still pending";fl.className="flag old"}else fl.remove();
+    it.querySelector(".ln1").textContent="MRP "+r.p+" · System stock "+r.n+" pcs";
+    it.querySelector(".ln2").textContent=isRefill
+      ?"Display any one size. In stock: "+r.rows.map(x=>x.s+" ("+x.n+")").join(", ")
+      :"On display: "+r.seen.map(x=>x.s+" ×"+x.c).join(", ");
+    if(isRefill){const cb=it.querySelector("input");cb.checked=SS.done.has(r.b);
+      cb.onchange=()=>{cb.checked?SS.done.add(r.b):SS.done.delete(r.b);it.classList.toggle("done",cb.checked)}}
+    g.appendChild(it);
+  }
+  box.appendChild(g);
+}
 function renderGroups(box,list,isRefill){
+  if(SS.mode==="style")return renderStyleGroups(box,list,isRefill);
   if(!list.length){box.innerHTML='<div class="empty">'+(isRefill?"All items are on display. No refill needed.":"Nothing scanned yet.")+'</div>';return}
   const groups=new Map();
   for(const r of list){const k=r.st+"|"+r.co;(groups.get(k)||groups.set(k,[]).get(k)).push(r)}
@@ -646,6 +715,11 @@ $("tabs").onclick=e=>{const t=e.target.closest(".tab");if(!t)return;tab=t.datase
 
 function refillText(){
   const lines=["Refill list — "+SS.label,new Date(SS.finished).toLocaleString("en-GB"),""];
+  if(SS.mode==="style"){
+    for(const r of RES.missing) lines.push(r.st+" "+r.co+" — any one size: "+r.rows.map(x=>x.s+" ("+x.b+")").join(", "));
+    lines.push("","Total "+RES.missing.length+" style-colours");
+    return lines.join("\n");
+  }
   const groups=new Map();
   for(const r of RES.missing){const k=r.st+" "+r.co;(groups.get(k)||groups.set(k,[]).get(k)).push(r)}
   for(const [k,items] of groups) lines.push(k+": "+items.map(r=>r.s+" ("+r.b+")").join(", "));
@@ -659,8 +733,14 @@ $("copyBtn").onclick=async()=>{
 };
 $("csvBtn").onclick=async()=>{
   const esc=v=>'"'+String(v).replace(/"/g,'""')+'"';
-  const rows=[["Style Code","Colour","Size","Barcode","MRP","System Stock","Section"]];
-  for(const r of RES.missing) rows.push([r.st,r.co,r.s,r.b,r.p,r.n,SS.label]);
+  let rows;
+  if(SS.mode==="style"){
+    rows=[["Style Code","Colour","Sizes in stock (any one)","Barcodes","MRP","System Stock","Section"]];
+    for(const r of RES.missing) rows.push([r.st,r.co,r.rows.map(x=>x.s).join(" / "),r.rows.map(x=>x.b).join(" / "),r.p,r.n,SS.label]);
+  }else{
+    rows=[["Style Code","Colour","Size","Barcode","MRP","System Stock","Section"]];
+    for(const r of RES.missing) rows.push([r.st,r.co,r.s,r.b,r.p,r.n,SS.label]);
+  }
   const csv="﻿"+rows.map(r=>r.map(esc).join(",")).join("\r\n");
   const name="refill_"+new Date(SS.finished).toISOString().slice(0,16).replace(/[:T]/g,"-")+".csv";
   try{
