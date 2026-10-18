@@ -119,6 +119,18 @@ textarea{min-height:90px;font-family:var(--f-code)}
 .it .mid{flex:1;min-width:0}
 .it.done{opacity:.5}
 .it.done .sz{background:var(--ok-bg);color:var(--ok);text-decoration:line-through}
+.cp{flex:none;min-width:36px;min-height:36px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--accent);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+.cp svg{width:18px;height:18px;pointer-events:none}
+.cp.ok{background:var(--ok-bg);border-color:var(--ok);color:var(--ok)}
+.stl{display:flex;align-items:center;gap:8px;min-width:0}
+.stl .stc{font-family:var(--f-code);font-weight:600;font-size:.92rem;overflow-wrap:anywhere;min-width:0}
+.gh .stl{justify-content:space-between}
+.sbs{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.sb{display:flex;align-items:center;gap:8px;min-width:0}
+.sb .sz{min-width:46px;text-align:center;font-weight:700;border-radius:8px;background:var(--miss-bg);color:var(--miss);padding:2px 8px;flex:none}
+.sb.seen .sz{background:var(--ok-bg);color:var(--ok)}
+.sb .code{flex:1;min-width:0;overflow-wrap:anywhere}
+.sb .qty{flex:none;font-size:.8rem;color:var(--muted)}
 .flag{font-size:.75rem;font-weight:700;border-radius:6px;padding:1px 7px;margin-left:6px}
 .flag.new{background:var(--miss);color:var(--bg)}
 .flag.old{background:var(--warn-bg);color:var(--warn)}
@@ -269,6 +281,7 @@ details summary{cursor:pointer;font-weight:600;min-height:40px;display:flex;alig
     </div>
     <div class="row" id="refillTools">
       <button class="btn plain" id="copyBtn">Copy list</button>
+      <button class="btn plain" id="copyStyBtn">Copy styles</button>
       <button class="btn plain" id="csvBtn">Save CSV</button>
     </div>
     <div class="stack" id="resList"></div>
@@ -605,7 +618,7 @@ function compute(){
     for(const g of grp.values()){
       g.rows.sort((a,b)=>cmpSize(a.s,b.s));
       g.n=g.rows.reduce((a,r)=>a+r.n,0);
-      g.seen=g.rows.filter(r=>SS.scans.has(r.b)).map(r=>({s:r.s,c:SS.scans.get(r.b)}));
+      g.seen=g.rows.filter(r=>SS.scans.has(r.b)).map(r=>({s:r.s,b:r.b,c:SS.scans.get(r.b)}));
       if(g.seen.length) present.push(g);
       else missing.push({...g,isNew:prevScanned.has(g.b),still:prevMissing.has(g.b)});
     }
@@ -647,6 +660,29 @@ function renderResult(){
   else if(tab==="present") renderGroups(box,present,false);
   else renderOutside(box);
 }
+const CP_ICON='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>';
+async function copyText(t,msg){
+  try{await navigator.clipboard.writeText(t);toast(msg||"Copied");return true}
+  catch(e){const ta=document.createElement("textarea");ta.value=t;ta.style.position="fixed";ta.style.opacity="0";document.body.appendChild(ta);ta.select();let ok=false;try{ok=document.execCommand("copy")}catch(_){}ta.remove();toast(ok?(msg||"Copied"):"Could not copy");return ok}
+}
+function copyBtn(text,label,msg){
+  const b=document.createElement("button");b.type="button";b.className="cp";b.innerHTML=CP_ICON;b.title=label;b.setAttribute("aria-label",label);
+  b.onclick=async e=>{e.preventDefault();e.stopPropagation();if(await copyText(text,msg||("Copied "+text))){b.classList.add("ok");setTimeout(()=>b.classList.remove("ok"),1200)}};
+  return b;
+}
+function styleLine(st){const d=document.createElement("div");d.className="stl";const s=document.createElement("span");s.className="stc";s.textContent=st;d.append(s,copyBtn(st,"Copy style number","Copied style "+st));return d}
+function sizeRows(items,seen){
+  const box=document.createElement("div");box.className="sbs";
+  for(const x of items){
+    const row=document.createElement("div");row.className="sb"+(seen?" seen":"");
+    const z=document.createElement("span");z.className="sz";z.textContent=x.s;
+    const c=document.createElement("span");c.className="code";c.textContent=x.b;
+    const q=document.createElement("span");q.className="qty";q.textContent=seen?("×"+x.c):(x.n+" pcs");
+    row.append(z,c,q,copyBtn(x.b,"Copy barcode","Copied barcode "+x.b));
+    box.appendChild(row);
+  }
+  return box;
+}
 function renderStyleGroups(box,list,isRefill){
   if(!list.length){box.innerHTML='<div class="empty">'+(isRefill?"All style-colours are on display. No refill needed.":"Nothing scanned yet.")+'</div>';return}
   const g=document.createElement("div");g.className="grp";
@@ -654,15 +690,15 @@ function renderStyleGroups(box,list,isRefill){
     const it=document.createElement("label");it.className="it"+(isRefill&&SS.done.has(r.b)?" done":"");
     let html="";
     if(isRefill) html+='<input type="checkbox" aria-label="Refilled">';
-    html+='<span class="mid"><b class="nm"></b><span class="flag"></span><div class="muted small ln1"></div><div class="small ln2"></div></span>';
+    html+='<span class="mid"><span class="slot"></span><b class="nm"></b><span class="flag"></span><div class="muted small ln1"></div><div class="small ln2"></div><span class="slot2"></span></span>';
     it.innerHTML=html;
-    it.querySelector(".nm").textContent=r.st+" · "+r.co;
+    it.querySelector(".slot").replaceWith(styleLine(r.st));
+    it.querySelector(".nm").textContent=r.co;
     const fl=it.querySelector(".flag");
     if(isRefill&&r.isNew){fl.textContent="New";fl.className="flag new"}else if(isRefill&&r.still){fl.textContent="Still pending";fl.className="flag old"}else fl.remove();
     it.querySelector(".ln1").textContent="MRP "+r.p+" · System stock "+r.n+" pcs";
-    it.querySelector(".ln2").textContent=isRefill
-      ?"Display any one size. In stock: "+r.rows.map(x=>x.s+" ("+x.n+")").join(", ")
-      :"On display: "+r.seen.map(x=>x.s+" ×"+x.c).join(", ");
+    it.querySelector(".ln2").textContent=isRefill?"Display any one size:":"On display:";
+    it.querySelector(".slot2").replaceWith(isRefill?sizeRows(r.rows,false):sizeRows(r.seen,true));
     if(isRefill){const cb=it.querySelector("input");cb.checked=SS.done.has(r.b);
       cb.onchange=()=>{cb.checked?SS.done.add(r.b):SS.done.delete(r.b);it.classList.toggle("done",cb.checked)}}
     g.appendChild(it);
@@ -677,8 +713,8 @@ function renderGroups(box,list,isRefill){
   for(const [k,items] of groups){
     const g=document.createElement("div");g.className="grp";
     const h=document.createElement("div");h.className="gh";
-    h.innerHTML='<span class="st"></span><span class="co"></span>';
-    h.querySelector(".st").textContent=items[0].st;h.querySelector(".co").textContent=items[0].co+" · MRP "+items[0].p;
+    h.innerHTML='<span class="slot"></span><span class="co"></span>';
+    h.querySelector(".slot").replaceWith(styleLine(items[0].st));h.querySelector(".co").textContent=items[0].co+" · MRP "+items[0].p;
     g.appendChild(h);
     for(const r of items){
       const it=document.createElement("label");it.className="it"+(isRefill&&SS.done.has(r.b)?" done":"");
@@ -688,6 +724,7 @@ function renderGroups(box,list,isRefill){
       it.innerHTML=html;
       it.querySelector(".sz").textContent=r.s;
       it.querySelector(".code").textContent=r.b;
+      it.appendChild(copyBtn(r.b,"Copy barcode","Copied barcode "+r.b));
       const fl=it.querySelector(".flag");
       if(isRefill&&r.isNew){fl.textContent="New";fl.className="flag new"}else if(isRefill&&r.still){fl.textContent="Still pending";fl.className="flag old"}else fl.remove();
       const sc=SS.scans.get(r.b)||0;
@@ -726,11 +763,8 @@ function refillText(){
   lines.push("","Total "+RES.missing.length+" items");
   return lines.join("\n");
 }
-$("copyBtn").onclick=async()=>{
-  const t=refillText();
-  try{await navigator.clipboard.writeText(t);toast("List copied")}
-  catch(e){const ta=document.createElement("textarea");ta.value=t;document.body.appendChild(ta);ta.select();try{document.execCommand("copy");toast("List copied")}catch(_){toast("Could not copy")}ta.remove()}
-};
+$("copyBtn").onclick=()=>copyText(refillText(),"List copied");
+$("copyStyBtn").onclick=()=>{const u=[...new Set(RES.missing.map(r=>r.st))];copyText(u.join("\n"),u.length+" style numbers copied")};
 $("csvBtn").onclick=async()=>{
   const esc=v=>'"'+String(v).replace(/"/g,'""')+'"';
   let rows;
