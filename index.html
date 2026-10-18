@@ -123,8 +123,14 @@ textarea{min-height:90px;font-family:var(--f-code)}
 .cp svg{width:18px;height:18px;pointer-events:none}
 .cp.ok{background:var(--ok-bg);border-color:var(--ok);color:var(--ok)}
 .stl{display:flex;align-items:center;gap:8px;min-width:0}
-.stl .stc{font-family:var(--f-code);font-weight:600;font-size:.92rem;overflow-wrap:anywhere;min-width:0}
-.gh .stl{justify-content:space-between}
+.stl .stc{flex:1;font-family:var(--f-code);font-weight:600;font-size:.92rem;overflow-wrap:anywhere;min-width:0}
+.gh{flex-direction:row!important;align-items:center;gap:12px}
+.gh .gm{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.gh input[type=checkbox],.sb input[type=checkbox]{width:26px;height:26px;flex:none;accent-color:var(--ok)}
+.stl{justify-content:space-between}
+.it.sty{align-items:flex-start}
+.it.sty>input[type=checkbox]{margin-top:2px}
+.sb.done{opacity:.5}
 .sbs{display:flex;flex-direction:column;gap:6px;margin-top:8px}
 .sb{display:flex;align-items:center;gap:8px;min-width:0}
 .sb .sz{min-width:46px;text-align:center;font-weight:700;border-radius:8px;background:var(--miss-bg);color:var(--miss);padding:2px 8px;flex:none}
@@ -671,36 +677,50 @@ function copyBtn(text,label,msg){
   return b;
 }
 function styleLine(st){const d=document.createElement("div");d.className="stl";const s=document.createElement("span");s.className="stc";s.textContent=st;d.append(s,copyBtn(st,"Copy style number","Copied style "+st));return d}
-function sizeRows(items,seen){
-  const box=document.createElement("div");box.className="sbs";
+function tickSync(hd,cbs,mode){const all=cbs.every(c=>c.checked),any=cbs.some(c=>c.checked);hd.checked=mode==="style"?any:all;hd.indeterminate=mode!=="style"&&any&&!all}
+/* rows: [{cb,b,el}] — header tick selects all rows; rows ticked one by one update the header */
+function wireTicks(hd,rows,mode,onChange){
+  const cbs=rows.map(r=>r.cb);
+  const apply=r=>{r.cb.checked?SS.done.add(r.b):SS.done.delete(r.b);r.el.classList.toggle("done",r.cb.checked)};
+  rows.forEach(r=>{r.cb.checked=SS.done.has(r.b);r.el.classList.toggle("done",r.cb.checked);
+    r.cb.onchange=()=>{apply(r);tickSync(hd,cbs,mode);onChange&&onChange()}});
+  hd.onchange=()=>{rows.forEach(r=>{r.cb.checked=hd.checked;apply(r)});tickSync(hd,cbs,mode);onChange&&onChange()};
+  tickSync(hd,cbs,mode);onChange&&onChange();
+}
+function mkCb(label){const c=document.createElement("input");c.type="checkbox";c.setAttribute("aria-label",label);return c}
+function sizeRows(items,seen,tick){
+  const box=document.createElement("div");box.className="sbs";box._rows=[];
   for(const x of items){
-    const row=document.createElement("div");row.className="sb"+(seen?" seen":"");
+    const row=document.createElement("label");row.className="sb"+(seen?" seen":"");
+    let cb=null;if(tick){cb=mkCb("Refilled");row.appendChild(cb)}
     const z=document.createElement("span");z.className="sz";z.textContent=x.s;
     const c=document.createElement("span");c.className="code";c.textContent=x.b;
     const q=document.createElement("span");q.className="qty";q.textContent=seen?("×"+x.c):(x.n+" pcs");
     row.append(z,c,q,copyBtn(x.b,"Copy barcode","Copied barcode "+x.b));
     box.appendChild(row);
+    if(cb)box._rows.push({cb,b:x.b,el:row});
   }
   return box;
+}
+function flagEl(r,isRefill){
+  if(!isRefill||(!r.isNew&&!r.still))return null;
+  const f=document.createElement("span");f.className="flag "+(r.isNew?"new":"old");f.textContent=r.isNew?"New":"Still pending";return f;
 }
 function renderStyleGroups(box,list,isRefill){
   if(!list.length){box.innerHTML='<div class="empty">'+(isRefill?"All style-colours are on display. No refill needed.":"Nothing scanned yet.")+'</div>';return}
   const g=document.createElement("div");g.className="grp";
   for(const r of list){
-    const it=document.createElement("label");it.className="it"+(isRefill&&SS.done.has(r.b)?" done":"");
-    let html="";
-    if(isRefill) html+='<input type="checkbox" aria-label="Refilled">';
-    html+='<span class="mid"><span class="slot"></span><b class="nm"></b><span class="flag"></span><div class="muted small ln1"></div><div class="small ln2"></div><span class="slot2"></span></span>';
-    it.innerHTML=html;
-    it.querySelector(".slot").replaceWith(styleLine(r.st));
-    it.querySelector(".nm").textContent=r.co;
-    const fl=it.querySelector(".flag");
-    if(isRefill&&r.isNew){fl.textContent="New";fl.className="flag new"}else if(isRefill&&r.still){fl.textContent="Still pending";fl.className="flag old"}else fl.remove();
-    it.querySelector(".ln1").textContent="MRP "+r.p+" · System stock "+r.n+" pcs";
-    it.querySelector(".ln2").textContent=isRefill?"Display any one size:":"On display:";
-    it.querySelector(".slot2").replaceWith(isRefill?sizeRows(r.rows,false):sizeRows(r.seen,true));
-    if(isRefill){const cb=it.querySelector("input");cb.checked=SS.done.has(r.b);
-      cb.onchange=()=>{cb.checked?SS.done.add(r.b):SS.done.delete(r.b);it.classList.toggle("done",cb.checked)}}
+    const it=document.createElement("div");it.className="it sty";
+    let hd=null;if(isRefill){hd=mkCb("Style refilled");it.appendChild(hd)}
+    const mid=document.createElement("span");mid.className="mid";
+    mid.appendChild(styleLine(r.st));
+    const nm=document.createElement("b");nm.className="nm";nm.textContent=r.co;mid.appendChild(nm);
+    const fl=flagEl(r,isRefill);if(fl)mid.appendChild(fl);
+    const l1=document.createElement("div");l1.className="muted small";l1.textContent="MRP "+r.p+" · System stock "+r.n+" pcs";mid.appendChild(l1);
+    const l2=document.createElement("div");l2.className="small";l2.textContent=isRefill?"Display any one size:":"On display:";mid.appendChild(l2);
+    const rows=sizeRows(isRefill?r.rows:r.seen,!isRefill,isRefill);mid.appendChild(rows);
+    it.appendChild(mid);
+    if(isRefill)wireTicks(hd,rows._rows,"style",()=>it.classList.toggle("done",hd.checked));
     g.appendChild(it);
   }
   box.appendChild(g);
@@ -713,26 +733,28 @@ function renderGroups(box,list,isRefill){
   for(const [k,items] of groups){
     const g=document.createElement("div");g.className="grp";
     const h=document.createElement("div");h.className="gh";
-    h.innerHTML='<span class="slot"></span><span class="co"></span>';
-    h.querySelector(".slot").replaceWith(styleLine(items[0].st));h.querySelector(".co").textContent=items[0].co+" · MRP "+items[0].p;
-    g.appendChild(h);
+    let hd=null;if(isRefill){hd=mkCb("All sizes of this style refilled");h.appendChild(hd)}
+    const gm=document.createElement("div");gm.className="gm";
+    gm.appendChild(styleLine(items[0].st));
+    const co=document.createElement("span");co.className="co";co.textContent=items[0].co+" · MRP "+items[0].p;gm.appendChild(co);
+    h.appendChild(gm);g.appendChild(h);
+    const rows=[];
     for(const r of items){
-      const it=document.createElement("label");it.className="it"+(isRefill&&SS.done.has(r.b)?" done":"");
-      let html="";
-      if(isRefill) html+='<input type="checkbox" aria-label="Refilled">';
-      html+='<span class="sz"></span><span class="mid"><span class="code"></span><span class="flag"></span><div class="muted small"></div></span>';
-      it.innerHTML=html;
-      it.querySelector(".sz").textContent=r.s;
-      it.querySelector(".code").textContent=r.b;
-      it.appendChild(copyBtn(r.b,"Copy barcode","Copied barcode "+r.b));
-      const fl=it.querySelector(".flag");
-      if(isRefill&&r.isNew){fl.textContent="New";fl.className="flag new"}else if(isRefill&&r.still){fl.textContent="Still pending";fl.className="flag old"}else fl.remove();
+      const it=document.createElement("label");it.className="it";
+      let cb=null;if(isRefill){cb=mkCb("Refilled");it.appendChild(cb)}
+      const sz=document.createElement("span");sz.className="sz";sz.textContent=r.s;
+      const mid=document.createElement("span");mid.className="mid";
+      const code=document.createElement("span");code.className="code";code.textContent=r.b;mid.appendChild(code);
+      const fl=flagEl(r,isRefill);if(fl)mid.appendChild(fl);
       const sc=SS.scans.get(r.b)||0;
-      it.querySelector(".muted").textContent=isRefill?"System stock "+r.n+" pcs → est. in store "+r.n:"Scanned "+sc+" pcs · System stock "+r.n+(r.n>sc?" · est. in store "+(r.n-sc):"");
-      if(isRefill){const cb=it.querySelector("input");cb.checked=SS.done.has(r.b);
-        cb.onchange=()=>{cb.checked?SS.done.add(r.b):SS.done.delete(r.b);it.classList.toggle("done",cb.checked)}}
+      const m=document.createElement("div");m.className="muted small";
+      m.textContent=isRefill?"System stock "+r.n+" pcs → est. in store "+r.n:"Scanned "+sc+" pcs · System stock "+r.n+(r.n>sc?" · est. in store "+(r.n-sc):"");
+      mid.appendChild(m);
+      it.append(sz,mid,copyBtn(r.b,"Copy barcode","Copied barcode "+r.b));
       g.appendChild(it);
+      if(cb)rows.push({cb,b:r.b,el:it});
     }
+    if(isRefill)wireTicks(hd,rows,"size");
     box.appendChild(g);
   }
 }
