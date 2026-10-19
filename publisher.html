@@ -49,7 +49,7 @@ ol{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px}.muted{
     <label class="f">Report name shown in the app<input type="text" id="label" autocomplete="off"></label>
     <label class="f">Access code (employees enter this once)<input type="password" id="code" autocomplete="new-password" autocapitalize="off" spellcheck="false"></label>
     <label class="f">Repeat the access code<input type="password" id="code2" autocomplete="new-password" autocapitalize="off" spellcheck="false"></label>
-    <p class="small muted" style="margin:0">Use at least 8 characters, for example three unrelated words. Anyone who can download the file can try to guess a short code, so avoid names, phone numbers and simple numbers.</p>
+    <p class="small muted" style="margin:0">Use at least 12 characters, for example three unrelated words. Anyone who can download the file can try to guess a short code, so avoid names, phone numbers and simple numbers.</p>
     <button class="btn red" id="go" type="button">Create stock.dat</button>
     <div class="msg" id="m2" role="status"></div>
     <a class="btn" id="dl" hidden>Download stock.dat</a>
@@ -57,9 +57,9 @@ ol{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px}.muted{
   <section class="card">
     <h2>3. Publish</h2>
     <ol class="small">
-      <li>Save <b>stock.dat</b> into the monitor folder, replacing the old stock.dat.</li>
-      <li>In Netlify open the monitor site, go to Deploys and drag the whole folder onto the Production deploys area.</li>
-      <li>Employees open the app as usual. It checks for the new file, asks for the access code only the first time, and loads the report.</li>
+      <li>Save <b>stock.dat</b> on your computer. If the browser named it <b>stock (1).dat</b>, rename it to exactly <b>stock.dat</b> (delete the old downloaded copy first).</li>
+      <li>Open your GitHub repository, choose <b>Add file &rarr; Upload files</b>, drop <b>stock.dat</b> and press <b>Commit changes</b>. The new file replaces the old one.</li>
+      <li>Wait 1&ndash;2 minutes. Employees open the app as usual. It checks for the new file, asks for the access code only the first time, and loads the report.</li>
     </ol>
   </section>
 </main></div>
@@ -130,7 +130,7 @@ $("go").onclick=async()=>{
   if(!P)return;
   if(!window.crypto||!crypto.subtle){setM("m2","This browser cannot encrypt here. Open this page from its https link in Chrome on a computer.","err");return}
   if(!label){setM("m2","Enter a report name.","err");return}
-  if(code.length<8){setM("m2","The access code needs at least 8 characters.","err");return}
+  if(code.length<12){setM("m2","The access code needs at least 12 characters.","err");return}
   if(code!==$("code2").value){setM("m2","The two access codes are different.","err");return}
   setM("m2","Encrypting …");$("go").disabled=true;$("dl").hidden=true;
   try{
@@ -150,4 +150,3 @@ $("go").onclick=async()=>{
 };
 })();
 </script>
-</html>
